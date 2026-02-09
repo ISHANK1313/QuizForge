@@ -310,8 +310,8 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📞 CONTACT & SUPPORT
 
-- **🐛 Issues**: [GitHub Issues](https://github.com/shivank/quizforge/issues)
-- **👤 Developer**: **Shivank** - PhD Candidate in Mathematical Modeling, NIT Delhi
+- **🐛 Issues**: [GitHub Issues](https://github.com/ISHANK1313/quizforge/issues)
+- **👤 Developer**: **ISHANK** 
 - **🔗 Connect**: [LinkedIn](#) | [Email](#)
 
 ---
