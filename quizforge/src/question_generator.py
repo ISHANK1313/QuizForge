@@ -3,6 +3,93 @@ import random
 from typing import List, Dict, Any, Tuple
 from src.utils import similarity_score
 
+class AnswerExtractor:
+    """
+    Extract detailed, contextual answers from text.
+    """
+    def __init__(self):
+        pass
+
+    def extract_definition_answer(self, entity: str, paragraph_context: str, sentence: str) -> str:
+        """
+        Extract definition-style answer with context.
+
+        Args:
+            entity (str): The entity being defined.
+            paragraph_context (str): Full paragraph containing entity.
+            sentence (str): Immediate sentence with entity.
+
+        Returns:
+            str: Detailed answer.
+        """
+        # Try to find definition patterns
+        patterns = [
+            f"{entity} is ",
+            f"{entity} refers to ",
+            f"{entity} means ",
+            f"{entity.lower()} is ",
+            f"{entity.lower()} refers to ",
+        ]
+
+        for pattern in patterns:
+            if pattern in paragraph_context.lower():
+                # Extract the definition sentence
+                idx = paragraph_context.lower().find(pattern)
+                definition_start = paragraph_context[:idx].rfind('.') + 1
+                definition_end = paragraph_context[idx:].find('.') + idx + 1
+
+                if definition_end > idx:
+                    definition = paragraph_context[definition_start:definition_end].strip()
+                    return f"{entity}: {definition}"
+
+        # Fallback: use full paragraph context
+        return f"{entity}: {paragraph_context[:300]}..." if len(paragraph_context) > 300 else f"{entity}: {paragraph_context}"
+
+    def extract_concept_answer(self, keyword: str, context_sentences: List[str]) -> str:
+        """
+        Extract comprehensive concept explanation.
+
+        Args:
+            keyword (str): The concept keyword.
+            context_sentences (List[str]): Multiple sentences about the concept.
+
+        Returns:
+            str: Detailed answer.
+        """
+        # Combine relevant sentences
+        relevant = []
+        for sent in context_sentences[:3]:  # Max 3 sentences
+            if keyword.lower() in sent.lower():
+                relevant.append(sent)
+
+        if not relevant:
+            relevant = context_sentences[:2]
+
+        combined = ' '.join(relevant)
+
+        # Add explanatory prefix
+        return f"The concept of {keyword}: {combined}"
+
+    def extract_application_answer(self, concept: str, context: str) -> str:
+        """
+        Extract application-oriented answer.
+        """
+        # Look for examples, use cases, applications
+        keywords = ['example', 'used', 'apply', 'application', 'practice', 'implement']
+
+        sentences = context.split('.')
+        relevant_sentences = []
+
+        for sent in sentences:
+            if any(kw in sent.lower() for kw in keywords):
+                relevant_sentences.append(sent.strip())
+
+        if relevant_sentences:
+            return f"Practical application of {concept}: {'. '.join(relevant_sentences[:2])}."
+        else:
+            return f"Application of {concept}: {concept} can be practically applied in various contexts. {context[:200]}..."
+
+
 class QuestionTemplates:
     """
     Template-based question creation with context.

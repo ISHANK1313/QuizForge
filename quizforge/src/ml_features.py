@@ -60,6 +60,58 @@ class NERExtractor:
 
         return entities
 
+    def extract_entities_with_context(self, text: str, sentences: List[str]) -> List[Dict]:
+        """
+        Extract entities with extended paragraph context for better answers.
+
+        Args:
+            text (str): Full document text.
+            sentences (List[str]): List of sentences.
+
+        Returns:
+            List[Dict]: Entities with paragraph context.
+        """
+        doc = self.nlp(text)
+        entities = []
+
+        # Build sentence to paragraph mapping
+        paragraphs = text.split('\n\n')
+        sentence_to_para = {}
+        for para in paragraphs:
+            para_sentences = [s.strip() for s in para.split('.') if s.strip()]
+            for sent in para_sentences:
+                sentence_to_para[sent] = para
+
+        for ent in doc.ents:
+            sentence = ent.sent.text.strip()
+
+            # Find paragraph context (3-5 sentences around the entity)
+            para_context = sentence_to_para.get(sentence, sentence)
+
+            # If paragraph is too short, use surrounding sentences
+            if len(para_context.split()) < 20:
+                sent_idx = None
+                for idx, s in enumerate(sentences):
+                    if sentence in s:
+                        sent_idx = idx
+                        break
+
+                if sent_idx is not None:
+                    start = max(0, sent_idx - 2)
+                    end = min(len(sentences), sent_idx + 3)
+                    para_context = ' '.join(sentences[start:end])
+
+            entities.append({
+                'text': ent.text,
+                'label': ent.label_,
+                'sentence': sentence,
+                'paragraph_context': para_context,
+                'start_char': ent.start_char,
+                'end_char': ent.end_char
+            })
+
+        return entities
+
     def filter_entities(self, entities: List[Dict], entity_types: List[str]) -> List[Dict]:
         """
         Filter entities by type.
