@@ -174,20 +174,16 @@ class PDFGenerator:
 
     def add_answer_section(self, c, questions: List[Dict[str, Any]]):
         """
-        Add answer key section.
-
-        Args:
-            c: Canvas object.
-            questions (List[Dict]): List of questions.
+        Add detailed answer key section.
         """
         c.showPage()
         y = self.height - 50
         margin = 50
         max_width = self.width - 2 * margin
 
-        c.setFont("Helvetica-Bold", 16)
+        c.setFont("Helvetica-Bold", 18)
         c.drawString(margin, y, "Answer Key")
-        y -= 30
+        y -= 40
 
         formatter = Formatter()
         grouped = formatter.group_by_difficulty(questions)
@@ -196,27 +192,45 @@ class PDFGenerator:
         idx = 1
         for diff in order:
             qs = grouped.get(diff, [])
+            if not qs:
+                continue
+
+            # Difficulty section header
+            if y < 100:
+                c.showPage()
+                y = self.height - 50
+
+            c.setFont("Helvetica-Bold", 14)
+            c.setFillColor(colors.darkblue)
+            c.drawString(margin, y, f"{diff.capitalize()} - Answers")
+            c.setFillColor(colors.black)
+            y -= 25
+
             for q in qs:
-                if y < 50:
+                if y < 100:
                     c.showPage()
                     y = self.height - 50
 
-                # Extract answer or hint
-                answer_val = q.get('answer', 'Refer to context.')
-                source_val = q.get('source', '')
+                # Question number and type
+                c.setFont("Helvetica-Bold", 11)
+                header = f"{idx}. [{diff.upper()}] {q.get('type', 'question').title()}"
+                y = self._draw_text_wrapped(c, header, margin, y, max_width)
 
-                answer_text = f"{idx}. ({diff}) Answer: {answer_val}"
+                # The question itself
+                c.setFont("Helvetica-Oblique", 9)
+                q_text = f"Q: {q['question']}"
+                y = self._draw_text_wrapped(c, q_text, margin + 10, y, max_width - 10)
 
-                # Draw Answer
-                y = self._draw_text_wrapped(c, answer_text, margin, y, max_width)
+                # Answer with full context
+                c.setFont("Helvetica", 10)
+                answer_val = q.get('answer', 'See source material.')
+                answer_text = f"A: {answer_val}"
+                y = self._draw_text_wrapped(c, answer_text, margin + 10, y, max_width - 10)
 
-                # Optionally draw context if it's a sentence (not just "Refer to text")
-                if source_val and len(source_val) > 20 and "Refer to" not in source_val:
-                     context_text = f"   Context: {source_val}"
-                     y = self._draw_text_wrapped(c, context_text, margin + 20, y, max_width - 20)
-
-                y -= 5 # Extra spacing
+                y -= 15
                 idx += 1
+
+            y -= 10
 
     def generate(self, questions: List[Dict[str, Any]]) -> str:
         """
