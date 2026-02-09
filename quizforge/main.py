@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.pdf_processor import PDFExtractor, TextPreprocessor
 from src.ml_features import NERExtractor, TFIDFAnalyzer, DifficultyClassifier
-from src.question_generator import QuestionTemplates, MLQuestionRanker, QuestionValidator
+from src.question_generator import QuestionTemplates, MLQuestionRanker, QuestionValidator, AnswerExtractor
 from src.output_handler import PDFGenerator, Formatter
 from src.utils import load_config, setup_logging, create_directories, validate_pdf_file
 
@@ -104,27 +104,49 @@ def generate_question_bank(pdf_path: str, config: dict):
     # STEP 2: ML Feature Extraction
     print("Step 2/5: Extracting ML features...")
     try:
+        # Calculate adaptive question count
+        page_count = extractor.get_page_count()
+        questions_per_page = config['question_generation']['questions_per_page']
+        calculated_questions = min(
+            page_count * questions_per_page,
+            config['question_generation']['max_questions']
+        )
+        target_questions = max(calculated_questions, config['question_generation']['base_questions'])
+
+        logging.info(f"Target: {target_questions} questions for {page_count} pages")
+
         ner = NERExtractor(config['ml_models']['spacy_model'])
-        all_entities = ner.extract_entities(clean_text)
-        # Filter by type first
-        entities = ner.filter_entities(all_entities, ['PERSON', 'ORG', 'GPE', 'PRODUCT', 'WORK_OF_ART', 'EVENT', 'LAW', 'NORP'])
-        # Then filter for quality
+
+        # Use enhanced entity extraction with context
+        all_entities = ner.extract_entities_with_context(clean_text, sentences)
+
+        # Filter by type
+        entities = ner.filter_entities(all_entities, ['PERSON', 'ORG', 'GPE', 'PRODUCT', 'WORK_OF_ART', 'EVENT', 'LAW', 'NORP', 'FAC'])
+
+        # Filter for quality
         entities = ner.filter_quality_entities(entities)
         logging.info(f"Filtered to {len(entities)} quality entities.")
 
+        # Enhanced TF-IDF with more features
         tfidf = TFIDFAnalyzer(
             max_features=config['ml_models']['tfidf_max_features'],
             ngram_range=tuple(config['ml_models']['tfidf_ngram_range'])
         )
         tfidf.fit_transform(sentences)
-        keywords = tfidf.get_top_keywords(n=20)
 
-        # Calculate entity counts per sentence for difficulty classification
+        # Extract more keywords for larger documents
+        keyword_count = min(50, len(sentences) // 10)
+        keywords = tfidf.get_top_keywords(n=keyword_count)
+
+        logging.info(f"Extracted {len(keywords)} keywords")
+
+        # Calculate entity counts per sentence
         sentence_entity_counts = {}
         for entity in entities:
             s = entity['sentence']
             sentence_entity_counts[s] = sentence_entity_counts.get(s, 0) + 1
 
+        # Difficulty classification
         classifier = DifficultyClassifier()
         sentence_difficulties = {}
         for sent in sentences:
@@ -140,89 +162,107 @@ def generate_question_bank(pdf_path: str, config: dict):
     print("Step 3/5: Generating questions...")
     try:
         templates = QuestionTemplates()
+        answer_extractor = AnswerExtractor()
         questions = []
 
-        # Generate Definition Questions from Entities (with better answers)
-        for entity in tqdm(entities, desc="Processing Entities"):
-            q = templates.generate_definition_question(entity['text'], entity['sentence'])
+        # Calculate how many questions of each type
+        entity_questions = min(len(entities), target_questions // 3)
+        keyword_questions = min(len(keywords), target_questions // 3)
+        application_questions = min(15, target_questions // 10)
 
-            # Extract a better answer from context
-            source_sent = entity['sentence']
-            answer_text = f"{entity['text']}: {source_sent}"
+        # Generate Definition Questions from Entities
+        for entity in tqdm(entities[:entity_questions], desc="Processing Entities"):
+            q = templates.generate_definition_question(entity['text'], entity.get('paragraph_context', entity['sentence']))
+
+            # Extract detailed answer
+            answer = answer_extractor.extract_definition_answer(
+                entity['text'],
+                entity.get('paragraph_context', entity['sentence']),
+                entity['sentence']
+            )
 
             questions.append({
                 'question': q,
                 'type': 'definition',
                 'difficulty': sentence_difficulties.get(entity['sentence'], 'medium'),
-                'source': source_sent,
-                'answer': answer_text
+                'source': entity.get('paragraph_context', entity['sentence'])[:200] + '...',
+                'answer': answer
             })
 
         # Generate Concept Questions from Keywords
         keyword_map = tfidf.map_keywords_to_sentences([k for k, s in keywords], sentences)
-        for keyword, score in tqdm(keywords[:15], desc="Processing Keywords"):
-            # Only generate if we have good context
+
+        for keyword, score in tqdm(keywords[:keyword_questions], desc="Processing Keywords"):
             source_sents = keyword_map.get(keyword, [])
-            if not source_sents:
+            if not source_sents or len(source_sents[0].split()) < 10:
                 continue
 
-            # Pick the best source sentence (longest with keyword)
-            source = max(source_sents, key=len) if source_sents else ""
+            # Get multiple context sentences
+            context_sentences = source_sents[:3]
+            primary_sentence = context_sentences[0]
 
-            if len(source.split()) < 10:
-                continue
+            q = templates.generate_concept_question(keyword, primary_sentence)
 
-            q = templates.generate_concept_question(keyword, source)
-            answer_text = f"{keyword}: {source}"
+            # Extract comprehensive answer
+            answer = answer_extractor.extract_concept_answer(keyword, context_sentences)
 
             questions.append({
                 'question': q,
                 'type': 'concept',
-                'difficulty': sentence_difficulties.get(source, 'medium'),
+                'difficulty': sentence_difficulties.get(primary_sentence, 'medium'),
                 'tfidf_score': score,
-                'source': source,
-                'answer': answer_text
+                'source': ' '.join(context_sentences)[:250] + '...',
+                'answer': answer
             })
 
-            # Generate Fill-in-Blank (only for good sentences)
-            if len(source.split()) >= 10 and len(source.split()) <= 25:
-                q_blank = templates.generate_fill_blank(source, keyword)
+            # Fill-in-Blank for important keywords
+            if len(primary_sentence.split()) >= 10 and len(primary_sentence.split()) <= 25:
+                q_blank = templates.generate_fill_blank(primary_sentence, keyword)
                 if q_blank:
                     questions.append({
                         'question': q_blank,
                         'type': 'fill_blank',
-                        'difficulty': sentence_difficulties.get(source, 'easy'),
-                        'source': source,
-                        'answer': f"Answer: {keyword}. Full context: {source}"
+                        'difficulty': 'easy',
+                        'source': primary_sentence,
+                        'answer': f"Answer: {keyword}\n\nExplanation: {answer}"
                     })
 
-        # Generate Application Questions (only for top concepts)
-        for keyword, score in keywords[:8]:
+        # Application Questions
+        for keyword, score in keywords[:application_questions]:
             source_sents = keyword_map.get(keyword, [])
-            source = source_sents[0] if source_sents else "General application"
+            if not source_sents:
+                continue
 
-            q_app = templates.generate_application_question(keyword, source)
-            answer_text = f"Application of {keyword}: This concept can be applied by understanding its context: {source}"
+            context = ' '.join(source_sents[:2])
+            q_app = templates.generate_application_question(keyword, context)
+
+            answer = answer_extractor.extract_application_answer(keyword, context)
 
             questions.append({
                 'question': q_app,
                 'type': 'application',
                 'difficulty': 'hard',
                 'tfidf_score': score,
-                'source': source,
-                'answer': answer_text
+                'source': context[:200] + '...',
+                'answer': answer
             })
 
-        # Add analytical "Why" questions for variety
-        for entity in entities[:5]:
+        # Analytical Questions
+        analytical_count = min(len(entities), target_questions // 8)
+        for entity in entities[:analytical_count]:
             q_why = templates.generate_why_question(entity['text'], entity['sentence'])
+
+            answer = f"Analysis of {entity['text']}: {entity.get('paragraph_context', entity['sentence'])}"
+
             questions.append({
                 'question': q_why,
                 'type': 'analytical',
                 'difficulty': 'medium',
-                'source': entity['sentence'],
-                'answer': f"Analysis of {entity['text']}: {entity['sentence']}"
+                'source': entity.get('paragraph_context', entity['sentence'])[:200] + '...',
+                'answer': answer
             })
+
+        logging.info(f"Generated {len(questions)} questions before filtering")
 
     except Exception as e:
         logging.error(f"Error in question generation: {e}")
@@ -247,7 +287,7 @@ def generate_question_bank(pdf_path: str, config: dict):
         filtered = ranker.ensure_distribution(unique_questions, config['question_generation']['difficulty_distribution'])
 
         # Finally slice
-        final_questions = filtered[:config['question_generation']['total_questions']]
+        final_questions = filtered[:target_questions]
 
     except Exception as e:
         logging.error(f"Error in ranking: {e}")
@@ -305,7 +345,8 @@ if __name__ == "__main__":
     if args.output:
         config['output']['output_dir'] = args.output
     if args.num_questions:
-        config['question_generation']['total_questions'] = args.num_questions
+        config['question_generation']['max_questions'] = args.num_questions
+        config['question_generation']['base_questions'] = args.num_questions
 
     # Determine Input
     pdf_path = args.input

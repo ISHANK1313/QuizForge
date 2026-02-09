@@ -61,6 +61,14 @@ class PDFExtractor:
         Returns:
             int: Number of pages.
         """
+        if self.page_count == 0:
+            try:
+                with open(self.pdf_path, 'rb') as file:
+                    reader = PyPDF2.PdfReader(file)
+                    self.page_count = len(reader.pages)
+            except Exception as e:
+                logging.error(f"Error counting pages: {e}")
+                return 0
         return self.page_count
 
 

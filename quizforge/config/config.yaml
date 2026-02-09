@@ -1,23 +1,26 @@
 pdf_processing:
-  max_pages: 50
+  max_pages: 300
   min_sentence_length: 10
   encoding: 'utf-8'
 
 ml_models:
   spacy_model: 'en_core_web_sm'
-  tfidf_max_features: 50
-  tfidf_ngram_range: [1, 2]
+  tfidf_max_features: 100
+  tfidf_ngram_range: [1, 3]
 
 question_generation:
-  total_questions: 40
+  base_questions: 40
+  questions_per_page: 2
+  max_questions: 500
   difficulty_distribution:
-    easy: 0.4
-    medium: 0.4
-    hard: 0.2
+    easy: 0.35
+    medium: 0.45
+    hard: 0.20
   question_types:
     - definition
     - concept
     - application
+    - analytical
     - fill_blank
 
 output:
