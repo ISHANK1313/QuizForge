@@ -207,16 +207,16 @@ class DifficultyClassifier:
         tech_terms = features['technical_terms']
         entity_density = features['entity_density']
 
-        # Adjusted rules to incorporate entity density
-        if length < 10 and tech_terms == 0:
-            return 'easy', 0.9
-        elif length < 20 and tech_terms < 3:
-            # High entity density might make medium length sentences easier (factual)
-            if entity_density > 0.3:
-                return 'easy', 0.85
+        # More lenient rules for better distribution
+        if length < 15 and tech_terms <= 1:
+            return 'easy', 0.85
+        elif length < 25 and tech_terms <= 3:
+            # High entity density makes it easier (factual recall)
+            if entity_density > 0.2:
+                return 'easy', 0.8
             return 'medium', 0.8
         else:
             # Very high technical term count makes it hard
-            if tech_terms > 4:
-                return 'hard', 0.95
-            return 'hard', 0.85
+            if tech_terms > 5 or length > 30:
+                return 'hard', 0.9
+            return 'medium', 0.75
