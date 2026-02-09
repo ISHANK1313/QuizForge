@@ -105,9 +105,12 @@ def generate_question_bank(pdf_path: str, config: dict):
     print("Step 2/5: Extracting ML features...")
     try:
         ner = NERExtractor(config['ml_models']['spacy_model'])
-        entities = ner.extract_entities(clean_text)
-        # Filter entities? Keep mostly NOUN/PROPN like types for better questions
-        entities = ner.filter_entities(entities, ['PERSON', 'ORG', 'GPE', 'PRODUCT', 'WORK_OF_ART', 'EVENT'])
+        all_entities = ner.extract_entities(clean_text)
+        # Filter by type first
+        entities = ner.filter_entities(all_entities, ['PERSON', 'ORG', 'GPE', 'PRODUCT', 'WORK_OF_ART', 'EVENT', 'LAW', 'NORP'])
+        # Then filter for quality
+        entities = ner.filter_quality_entities(entities)
+        logging.info(f"Filtered to {len(entities)} quality entities.")
 
         tfidf = TFIDFAnalyzer(
             max_features=config['ml_models']['tfidf_max_features'],
@@ -139,58 +142,86 @@ def generate_question_bank(pdf_path: str, config: dict):
         templates = QuestionTemplates()
         questions = []
 
-        # Generate Definition Questions from Entities
+        # Generate Definition Questions from Entities (with better answers)
         for entity in tqdm(entities, desc="Processing Entities"):
-            q = templates.generate_definition_question(entity['text'])
+            q = templates.generate_definition_question(entity['text'], entity['sentence'])
+
+            # Extract a better answer from context
+            source_sent = entity['sentence']
+            answer_text = f"{entity['text']}: {source_sent}"
+
             questions.append({
                 'question': q,
                 'type': 'definition',
                 'difficulty': sentence_difficulties.get(entity['sentence'], 'medium'),
-                'source': entity['sentence'],
-                'answer': entity['text'] # Target answer
+                'source': source_sent,
+                'answer': answer_text
             })
 
         # Generate Concept Questions from Keywords
         keyword_map = tfidf.map_keywords_to_sentences([k for k, s in keywords], sentences)
-        for keyword, score in tqdm(keywords, desc="Processing Keywords"):
-            q = templates.generate_concept_question(keyword)
-            # Find a source sentence for this keyword
+        for keyword, score in tqdm(keywords[:15], desc="Processing Keywords"):
+            # Only generate if we have good context
             source_sents = keyword_map.get(keyword, [])
-            source = source_sents[0] if source_sents else "Refer to text."
+            if not source_sents:
+                continue
+
+            # Pick the best source sentence (longest with keyword)
+            source = max(source_sents, key=len) if source_sents else ""
+
+            if len(source.split()) < 10:
+                continue
+
+            q = templates.generate_concept_question(keyword, source)
+            answer_text = f"{keyword}: {source}"
 
             questions.append({
                 'question': q,
                 'type': 'concept',
-                'difficulty': 'medium', # Default, or derive from source sentence
+                'difficulty': sentence_difficulties.get(source, 'medium'),
                 'tfidf_score': score,
                 'source': source,
-                'answer': keyword
+                'answer': answer_text
             })
 
-            # Generate Fill-in-Blank
-            if source_sents:
-                # Use the first sentence that is not too long?
-                target_sent = source_sents[0]
-                q_blank = templates.generate_fill_blank(target_sent, keyword)
-                questions.append({
-                    'question': q_blank,
-                    'type': 'fill_blank',
-                    'difficulty': sentence_difficulties.get(target_sent, 'medium'),
-                    'source': target_sent,
-                    'answer': keyword
-                })
+            # Generate Fill-in-Blank (only for good sentences)
+            if len(source.split()) >= 10 and len(source.split()) <= 25:
+                q_blank = templates.generate_fill_blank(source, keyword)
+                if q_blank:
+                    questions.append({
+                        'question': q_blank,
+                        'type': 'fill_blank',
+                        'difficulty': sentence_difficulties.get(source, 'easy'),
+                        'source': source,
+                        'answer': f"Answer: {keyword}. Full context: {source}"
+                    })
 
-        # Generate Application Questions
-        # Use top keywords for application questions
-        for keyword, score in keywords[:10]: # Limit to top 10 concepts for application
-            q_app = templates.generate_application_question(keyword)
+        # Generate Application Questions (only for top concepts)
+        for keyword, score in keywords[:8]:
+            source_sents = keyword_map.get(keyword, [])
+            source = source_sents[0] if source_sents else "General application"
+
+            q_app = templates.generate_application_question(keyword, source)
+            answer_text = f"Application of {keyword}: This concept can be applied by understanding its context: {source}"
+
             questions.append({
                 'question': q_app,
                 'type': 'application',
-                'difficulty': 'hard', # Application is generally harder
+                'difficulty': 'hard',
                 'tfidf_score': score,
-                'source': "Concept Application",
-                'answer': f"Apply the concept of {keyword}."
+                'source': source,
+                'answer': answer_text
+            })
+
+        # Add analytical "Why" questions for variety
+        for entity in entities[:5]:
+            q_why = templates.generate_why_question(entity['text'], entity['sentence'])
+            questions.append({
+                'question': q_why,
+                'type': 'analytical',
+                'difficulty': 'medium',
+                'source': entity['sentence'],
+                'answer': f"Analysis of {entity['text']}: {entity['sentence']}"
             })
 
     except Exception as e:

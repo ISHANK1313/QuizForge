@@ -73,6 +73,49 @@ class NERExtractor:
         """
         return [ent for ent in entities if ent['label'] in entity_types]
 
+    def filter_quality_entities(self, entities: List[Dict]) -> List[Dict]:
+        """
+        Filter entities for quality - remove short, common, or irrelevant ones.
+
+        Args:
+            entities (List[Dict]): List of entities.
+
+        Returns:
+            List[Dict]: High-quality entities only.
+        """
+        # Common words to exclude (too generic)
+        exclude_terms = {
+            'extraordinary', 'important', 'special', 'general', 'particular',
+            'several', 'various', 'different', 'certain', 'other', 'such',
+            'first', 'second', 'third', 'last', 'next', 'previous', 'new',
+            'old', 'good', 'bad', 'great', 'small', 'large', 'many', 'few'
+        }
+
+        quality_entities = []
+        for ent in entities:
+            text = ent['text'].lower()
+
+            # Skip if too short (< 3 characters)
+            if len(text) < 3:
+                continue
+
+            # Skip common/generic terms
+            if text in exclude_terms:
+                continue
+
+            # Skip if it's just a number or single letter
+            if text.isdigit() or len(text) == 1:
+                continue
+
+            # Require meaningful context (sentence length > 20 chars)
+            if len(ent['sentence']) < 20:
+                continue
+
+            # Keep only if entity appears in a substantial sentence
+            quality_entities.append(ent)
+
+        return quality_entities
+
 
 class TFIDFAnalyzer:
     """

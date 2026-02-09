@@ -5,37 +5,84 @@ from src.utils import similarity_score
 
 class QuestionTemplates:
     """
-    Template-based question creation.
+    Template-based question creation with context.
     """
     def __init__(self):
         pass
 
-    def generate_definition_question(self, entity: str) -> str:
+    def generate_definition_question(self, entity: str, context: str = "") -> str:
         """
-        Generate definition question: "What is {entity}?"
-        """
-        return f"What is {entity}?"
+        Generate contextual definition question.
 
-    def generate_concept_question(self, keyword: str) -> str:
-        """
-        Generate concept question: "Explain the concept of {keyword}."
-        """
-        return f"Explain the concept of {keyword}."
+        Args:
+            entity (str): The entity to ask about.
+            context (str): Source sentence for context.
 
-    def generate_application_question(self, concept: str) -> str:
+        Returns:
+            str: Question text.
         """
-        Generate application question: "How would you apply {concept} in practice?"
+        import random
+        templates = [
+            f"Define {entity} and explain its significance.",
+            f"What is {entity} and why is it important?",
+            f"Explain the concept of {entity}.",
+            f"Describe {entity} in detail."
+        ]
+        return random.choice(templates)
+
+    def generate_concept_question(self, keyword: str, context: str = "") -> str:
         """
-        return f"How would you apply {concept} in practice?"
+        Generate concept question with context.
+        """
+        import random
+        templates = [
+            f"Explain the concept of {keyword} in detail.",
+            f"What is the significance of {keyword}?",
+            f"Describe the role and importance of {keyword}.",
+            f"Discuss the key aspects of {keyword}."
+        ]
+        return random.choice(templates)
+
+    def generate_application_question(self, concept: str, context: str = "") -> str:
+        """
+        Generate application question.
+        """
+        import random
+        templates = [
+            f"How is {concept} applied in practice?",
+            f"Provide an example of how {concept} is used.",
+            f"Explain a practical application of {concept}.",
+            f"Describe a scenario where {concept} would be relevant."
+        ]
+        return random.choice(templates)
+
+    def generate_why_question(self, entity: str, context: str = "") -> str:
+        """
+        Generate analytical why/how questions.
+        """
+        import random
+        templates = [
+            f"Why is {entity} considered important?",
+            f"How does {entity} function or operate?",
+            f"What are the key features of {entity}?",
+            f"Analyze the role of {entity}."
+        ]
+        return random.choice(templates)
 
     def generate_fill_blank(self, sentence: str, keyword: str) -> str:
         """
         Generate fill-in-blank question.
-        Replace keyword with "_______".
         """
-        # Case insensitive replacement, but keep original case in sentence except for the blank
+        import re
+        # Only create if sentence is substantial
+        if len(sentence.split()) < 8:
+            return None
+
         pattern = re.compile(re.escape(keyword), re.IGNORECASE)
-        return pattern.sub("_______", sentence)
+        question = pattern.sub("_______", sentence, count=1)
+
+        # Make it a proper question
+        return f"Fill in the blank: {question}"
 
 
 class MLQuestionRanker:
