@@ -13,7 +13,7 @@
 
 **Transform lecture PDFs into comprehensive question banks using advanced NLP and Machine Learning.**
 
-[View Demo Video](#) · [Report Bug](https://github.com/shivank/quizforge/issues) · [Request Feature](https://github.com/shivank/quizforge/issues)
+ · [Report Bug](https://github.com/ISHANK1313/QuizForge/issues) · [Request Feature](https://github.com/ISHANK1313/QuizForge/issues)
 
 </div>
 
@@ -310,7 +310,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📞 CONTACT & SUPPORT
 
-- **🐛 Issues**: [GitHub Issues](https://github.com/ISHANK1313/quizforge/issues)
+- **🐛 Issues**: [GitHub Issues](https://github.com/ISHANK1313/QuizForge/issues)
 - **👤 Developer**: **ISHANK** 
 - **🔗 Connect**: [LinkedIn](#) | [Email](#)
 
