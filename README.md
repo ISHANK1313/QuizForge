@@ -304,7 +304,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 - **[scikit-learn Contributors](https://scikit-learn.org/)** for robust ML tools.
 - **[NLTK Developers](https://www.nltk.org/)** for foundational NLP resources.
 - **[ReportLab Team](https://www.reportlab.com/)** for the PDF generation engine.
-- Academic advisors and mentors at **NIT Delhi**.
+
 
 ---
 
